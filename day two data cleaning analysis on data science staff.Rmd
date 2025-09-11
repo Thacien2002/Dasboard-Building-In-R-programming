@@ -1,0 +1,313 @@
+---
+title: "Data Cleaning and Analysis on Lung Cancer Dataset"
+author: "Thacien HARA"
+date: "2025-06-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(janitor)
+library(car)
+library(pROC)
+library(cluster)
+```
+
+## 1. Import the Dataset
+
+```{r import}
+data <- read_excel("C:\\Users\\harag\\OneDrive\\Desktop\\Project\\R DOCUMENT MATRIALS\\data plus R TRAINING\\R Training exercise.xlsx")
+str(data)
+view(data)
+```
+
+## 2. Rename and Label Variables
+
+```{r relabel}
+# Rename Lung Cancer column if needed
+names(data)[names(data) == "Lung Cancer"] <- "LungCancer"
+
+# Convert and label factors
+data$LungCancer <- factor(data$LungCancer, levels = c(0, 1), labels = c("No", "Yes"))
+data$Gender <- factor(data$Gender, levels = c(1, 2), labels = c("Male", "Female"))
+data$`Marital Status` <- factor(data$`Marital Status`, levels = c(1, 2, 3, 4), labels = c("Single", "Married", "Divorced", "separated"))
+data$`Education Level` <- factor(data$`Education Level`, levels = c(1, 2, 3), labels = c("Primary", "Secondary", "Tertiary"))
+data$Smoking <- factor(data$Smoking, levels = c(1, 2), labels = c("No", "Yes"))
+data$`Drink alcohol?` <- factor(data$`Drink alcohol?`, levels = c(1, 2), labels = c("No", "Yes"))
+data$`Physical Exercises` <- factor(data$`Physical Exercises`, levels = c(1, 2), labels = c("No", "Yes"))
+```
+
+## 3. Handle Missing Values
+
+```{r missing}
+data$`Marital Status`[is.na(data$`Marital Status`)] <- "Single"
+data$`Education Level`[is.na(data$`Education Level`)] <- "Secondary"
+data$Gender[is.na(data$Gender)] <- "Male"
+data$`Drink alcohol?`[is.na(data$`Drink alcohol?`)] <- "No"
+data$Smoking[is.na(data$Smoking)] <- "Yes"
+data$`Physical Exercises`[is.na(data$`Physical Exercises`)] <- "Yes"
+data$Age[is.na(data$Age)] <- mean(data$Age, na.rm = TRUE)
+data$Weight[is.na(data$Weight)] <- mean(data$Weight, na.rm = TRUE)
+colSums(is.na(data))
+```
+
+## 4. Create New Variables
+
+```{r newvars}
+data$Age_Category <- cut(data$Age, breaks = c(-Inf, 18, 40, Inf), labels = c("Adolescents", "Adults", "Old"))
+data$Weight_Category <- cut(data$Weight, breaks = c(-Inf, 29, 75, Inf), labels = c("Under weight", "Normal weight", "Over weight"))
+view(data)
+getwd()
+library(writexl)
+write_xlsx(data, "cleaneddata.xlsx")
+```
+
+## 5. Exploratory Data Analysis
+
+```{r eda}
+table(data$LungCancer)
+prop.table(table(data$LungCancer)) * 100
+table(data$`Marital Status`)
+prop.table(table(data$`Marital Status`)) * 100
+table(data$`Education Level`)
+prop.table(table(data$`Education Level`)) * 100
+table(data$Gender)
+prop.table(table(data$Gender)) * 100
+table(data$Weight_Category)
+prop.table(table(data$Weight_Category)) * 100
+table(data$`Drink alcohol?`)
+prop.table(table(data$`Drink alcohol?`)) * 100
+table(data$Smoking)
+prop.table(table(data$Smoking)) * 100
+table(data$`Physical Exercises`)
+prop.table(table(data$`Physical Exercises`)) * 100
+table(data$Age_Category)
+prop.table(table(data$Age_Category)) * 100
+
+# Data visualization
+library(ggplot2)
+library(dplyr)
+data %>%
+  count(LungCancer) %>%
+  mutate(perc = round(100 * n / sum(n), 1)) %>%
+  ggplot(aes(x = LungCancer, y = perc, fill = LungCancer)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(perc, "%")), vjust = -0.5) +
+  labs(title = "Lung Cancer Distribution", y = "Percentage", x = "") +
+  theme_minimal()
+
+data %>%
+  count(LungCancer) %>%
+  mutate(perc = round(100 * n / sum(n), 1)) %>%
+  ggplot(aes(x = LungCancer, y = perc, fill = LungCancer)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(perc, "%")), vjust = -0.5) +
+  labs(title = "Lung Cancer Distribution", y = "Percentage", x = "") +
+  theme_minimal()
+data %>%
+  count(`Marital Status`) %>%
+  mutate(perc = round(100 * n / sum(n), 1)) %>%
+  ggplot(aes(x = `Marital Status`, y = perc, fill = `Marital Status`)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(perc, "%")), vjust = -0.5) +
+  labs(title = "Marital Status Distribution", y = "Percentage", x = "") +
+  theme_minimal()
+data %>%
+  count(`Education Level`) %>%
+  mutate(perc = round(100 * n / sum(n), 1)) %>%
+  ggplot(aes(x = `Education Level`, y = perc, fill = `Education Level`)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(perc, "%")), vjust = -0.5) +
+  labs(title = "Education Level Distribution", y = "Percentage", x = "") +
+  theme_minimal()
+data %>%
+  count(Gender) %>%
+  mutate(perc = round(100 * n / sum(n), 1)) %>%
+  ggplot(aes(x = Gender, y = perc, fill = Gender)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(perc, "%")), vjust = -0.5) +
+  labs(title = "Gender Distribution", y = "Percentage", x = "") +
+  theme_minimal()
+data %>%
+  count(Weight_Category) %>%
+  mutate(perc = round(100 * n / sum(n), 1)) %>%
+  ggplot(aes(x = Weight_Category, y = perc, fill = Weight_Category)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(perc, "%")), vjust = -0.5) +
+  labs(title = "Weight Category Distribution", y = "Percentage", x = "") +
+  theme_minimal()
+data %>%
+  count(`Drink alcohol?`) %>%
+  mutate(perc = round(100 * n / sum(n), 1)) %>%
+  ggplot(aes(x = `Drink alcohol?`, y = perc, fill = `Drink alcohol?`)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(perc, "%")), vjust = -0.5) +
+  labs(title = "Alcohol Consumption", y = "Percentage", x = "") +
+  theme_minimal()
+data %>%
+  count(Smoking) %>%
+  mutate(perc = round(100 * n / sum(n), 1)) %>%
+  ggplot(aes(x = Smoking, y = perc, fill = Smoking)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(perc, "%")), vjust = -0.5) +
+  labs(title = "Smoking Status", y = "Percentage", x = "") +
+  theme_minimal()
+data %>%
+  count(`Physical Exercises`) %>%
+  mutate(perc = round(100 * n / sum(n), 1)) %>%
+  ggplot(aes(x = `Physical Exercises`, y = perc, fill = `Physical Exercises`)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(perc, "%")), vjust = -0.5) +
+  labs(title = "Physical Exercise Participation", y = "Percentage", x = "") +
+  theme_minimal()
+data %>%
+  count(Age_Category) %>%
+  mutate(perc = round(100 * n / sum(n), 1)) %>%
+  ggplot(aes(x = Age_Category, y = perc, fill = Age_Category)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste0(perc, "%")), vjust = -0.5) +
+  labs(title = "Age Category Distribution", y = "Percentage", x = "") +
+  theme_minimal()
+
+#crosstabulation analysis (look at the relationship also )
+table(data$Smoking, data$LungCancer)
+
+# Calculate frequency and percentage
+smoke_lung <- data %>%
+  count(Smoking, LungCancer) %>%
+  group_by(Smoking) %>%
+  mutate(perc = round(100 * n / sum(n), 1))
+smoke_lung
+# Plot grouped bar chart with percentages
+ggplot(smoke_lung, aes(x = Smoking, y = perc, fill = LungCancer)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.6) +
+  geom_text(aes(label = paste0(perc, "%")), 
+            position = position_dodge(width = 0.8), 
+            vjust = -0.3, size = 4) +
+  labs(title = "Smoking vs Lung Cancer",
+       x = "Smoking Status",
+       y = "Percentage",
+       fill = "Lung Cancer") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 100)) +
+  theme_minimal()
+
+
+sum(duplicated(data))
+```
+
+## 6. Visualizations
+
+```{r plots}
+ggplot(data, aes(x = Smoking, fill = LungCancer)) +
+  geom_bar(position = "fill") +
+  labs(title = "Lung Cancer Proportion by Smoking", y = "Proportion") +
+  theme_minimal()
+
+ggplot(data, aes(x = Age_Category)) +
+  geom_bar(fill = "steelblue") +
+  labs(title = "Age Category Distribution")
+
+pie(table(data$Smoking), main = "Smoking Status", col = c("lightgreen", "salmon"))
+
+ggplot(data, aes(x = LungCancer, y = Age, fill = LungCancer)) +
+  geom_boxplot() +
+  labs(title = "Age Distribution by Lung Cancer Status") +
+  theme_minimal()
+```
+
+## 7. Frequency Tables with Percentages
+
+```{r freq}
+data %>%
+  select(`Marital Status`, `Education Level`, LungCancer, Gender, `Drink alcohol?`, Smoking, `Physical Exercises`) %>%
+  map(~tabyl(.) %>% adorn_pct_formatting())
+income=c(1000,4000,800000,20000000,40000089)
+shapiro.test(income)
+# ho the average income is not normal
+# ha average is normal ,for us the level of significance is equal to 0.05
+# pvalue is 0.0577
+```
+
+## 8. Chi-Square Test
+
+```{r chi}
+tab_smoke_lung <- table(data$Smoking, data$LungCancer)
+chisq.test(tab_smoke_lung)
+```
+
+## 9. Compare Means by Lung Cancer Status
+
+```{r meancompare}
+data %>%
+  group_by(LungCancer) %>%
+  summarise(
+    mean_age = mean(Age, na.rm = TRUE),
+    sd_age = sd(Age, na.rm = TRUE),
+    mean_weight = mean(Weight, na.rm = TRUE),
+    sd_weight = sd(Weight, na.rm = TRUE)
+  )
+```
+
+## 10. T-Test
+
+```{r ttest}
+t.test(Age ~ LungCancer, data = data)
+```
+
+## 11. Logistic Regression
+
+```{r}
+model <- glm(LungCancer ~ Age + Gender + Smoking + `Drink alcohol?` + `Physical Exercises` +`Education Level` + `Marital Status` + Weight, data = data, family = binomial(link = "logit"))
+summary(model)
+```
+
+## 12. Odds Ratios
+
+```{r odds}
+exp(cbind(OR = coef(model), confint(model)))
+```
+
+## 13. Multicollinearity
+
+```{r vif}
+vif(model)
+```
+
+## 14. ROC Curve
+
+```{r roc}
+roc_result <- roc(data$LungCancer, fitted(model))
+plot(roc_result, col = "blue", main = "ROC Curve")
+auc(roc_result)
+```
+
+## 15. Clustering
+
+```{r cluster}
+lifestyle_data <- data %>% select(Age, Weight) %>% scale()
+set.seed(123)
+kmeans_result <- kmeans(lifestyle_data, centers = 3)
+data$Cluster <- as.factor(kmeans_result$cluster)
+
+ggplot(data, aes(x = Age, y = Weight, color = Cluster)) +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "Clusters of Respondents")
+```
+
+## 16. Logistic Regression with Interaction
+
+```{r interaction}
+model_interact <- glm(LungCancer ~ Age * Smoking + Gender + `Drink alcohol?` +
+                        `Physical Exercises` + `Education Level` + `Marital Status` + Weight,
+                      data = data, family = binomial)
+summary(model_interact)
+```
+
+## 17. Export Cleaned Data
+
+```{r export}
+write.csv(data, "cleaned_data.csv", row.names = FALSE)

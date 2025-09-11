@@ -1,0 +1,178 @@
+---
+title: "Lung Cancer Risk Prediction Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    theme: flatly
+    social: menu
+    source_code: embed
+    runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(shiny)
+library(flexdashboard)
+library(tidyverse)
+library(plotly)
+library(readxl)
+library(janitor)
+
+# Load and clean data
+data <- read_excel("C:\\Users\\harag\\OneDrive\\Desktop\\Project\\R DOCUMENT MATRIALS\\data plus R TRAINING\\R Training exercise.xlsx") %>%
+  clean_names()
+
+# Mode function
+get_mode <- function(x) {
+  ux <- na.omit(unique(x))
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+# Handle missing data and relabel
+clean_data <- data %>%
+  mutate(
+    age = ifelse(is.na(age), median(age, na.rm = TRUE), age),
+    weight = ifelse(is.na(weight), median(weight, na.rm = TRUE), weight),
+    education_level = ifelse(is.na(education_level), get_mode(education_level), education_level),
+    gender = ifelse(is.na(gender), get_mode(gender), gender),
+    drink_alcohol = ifelse(is.na(drink_alcohol), get_mode(drink_alcohol), drink_alcohol),
+    smoking = ifelse(is.na(smoking), get_mode(smoking), smoking),
+    physical_exercises = ifelse(is.na(physical_exercises), get_mode(physical_exercises), physical_exercises)
+  ) %>%
+  mutate(
+    marital_status = factor(marital_status, levels = 1:4, labels = c("Single", "Married", "Divorced", "Widowed")),
+    education_level = factor(education_level, levels = 1:3, labels = c("Primary", "Secondary", "Tertiary")),
+    lung_cancer = factor(lung_cancer, levels = 0:1, labels = c("No", "Yes")),
+    gender = factor(gender, levels = 1:2, labels = c("Male", "Female")),
+    drink_alcohol = factor(drink_alcohol, levels = 2:3, labels = c("No", "Yes")),
+    smoking = factor(smoking, levels = 0:1, labels = c("No", "Yes")),
+    physical_exercises = factor(physical_exercises, levels = 1:2, labels = c("No", "Yes"))
+  )
+
+# Logistic regression model
+model <- glm(lung_cancer ~ age + gender + smoking + drink_alcohol + physical_exercises +
+               education_level + marital_status + weight,
+             data = clean_data, family = binomial)
+
+``` 
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+selectInput("gender", "Gender", choices = levels(clean_data$gender))
+selectInput("smoking", "Smoking", choices = levels(clean_data$smoking))
+selectInput("drink", "Drink Alcohol", choices = levels(clean_data$drink_alcohol))
+selectInput("exercise", "Physical Exercise", choices = levels(clean_data$physical_exercises))
+selectInput("edu", "Education Level", choices = levels(clean_data$education_level))
+selectInput("marital", "Marital Status", choices = levels(clean_data$marital_status))
+numericInput("age", "Age", value = 40, min = 15, max = 100)
+numericInput("weight", "Weight (kg)", value = 65, min = 1, max = 200)
+actionButton("predict", "Predict Lung Cancer Risk", class = "btn-primary")
+checkboxInput("showInfo", "Show Interpretation", value = TRUE)
+```
+
+Prediction {.tabset .tabset-fade}
+=======================================================================
+
+### Predicted Risk
+
+```{r}
+renderPrint({
+  req(input$predict)
+  newdata <- tibble(
+    age = input$age,
+    gender = factor(input$gender, levels = levels(clean_data$gender)),
+    smoking = factor(input$smoking, levels = levels(clean_data$smoking)),
+    drink_alcohol = factor(input$drink, levels = levels(clean_data$drink_alcohol)),
+    physical_exercises = factor(input$exercise, levels = levels(clean_data$physical_exercises)),
+    education_level = factor(input$edu, levels = levels(clean_data$education_level)),
+    marital_status = factor(input$marital, levels = levels(clean_data$marital_status)),
+    weight = input$weight
+  )
+  pred <- predict(model, newdata = newdata, type = "response")
+  paste("\U0001F4A1 Predicted Risk of Lung Cancer:", round(pred * 100, 2), "%")
+})
+```
+
+### Risk Probability Chart
+
+```{r}
+renderPlotly({
+  req(input$predict)
+  newdata <- tibble(
+    age = input$age,
+    gender = factor(input$gender, levels = levels(clean_data$gender)),
+    smoking = factor(input$smoking, levels = levels(clean_data$smoking)),
+    drink_alcohol = factor(input$drink, levels = levels(clean_data$drink_alcohol)),
+    physical_exercises = factor(input$exercise, levels = levels(clean_data$physical_exercises)),
+    education_level = factor(input$edu, levels = levels(clean_data$education_level)),
+    marital_status = factor(input$marital, levels = levels(clean_data$marital_status)),
+    weight = input$weight
+  )
+  prob <- predict(model, newdata = newdata, type = "response")
+  df <- data.frame(
+    label = c("Low Risk", "High Risk"),
+    Probability = c(1 - prob, prob)
+  )
+  p <- ggplot(df, aes(x = label, y = Probability, fill = label)) +
+    geom_bar(stat = "identity", width = 0.6) +
+    theme_minimal() +
+    labs(title = "\U0001F489 Lung Cancer Prediction Probability", y = "Probability") +
+    scale_fill_manual(values = c("Low Risk" = "#2ecc71", "High Risk" = "#e74c3c"))
+  ggplotly(p)
+})
+```
+
+```{r}
+renderUI({
+  if (input$showInfo) {
+    helpText("\U0001F4D6 This chart shows the predicted likelihood of having lung cancer based on selected characteristics.")
+  }
+})
+```
+
+Descriptive Analysis
+=======================================================================
+
+### Age Distribution by Lung Cancer
+```{r}
+renderPlotly({
+  df <- clean_data %>% count(lung_cancer, age)
+  ggplotly(
+    ggplot(df, aes(x = age, y = n, color = lung_cancer)) +
+      geom_line(size = 1.2) + theme_minimal() +
+      labs(title = "Age Distribution by Lung Cancer Status", y = "Count")
+  )
+})
+```
+
+### Smoking Proportion by Cancer Status
+```{r}
+renderPlotly({
+  df <- clean_data %>% count(smoking, lung_cancer)
+  ggplotly(
+    ggplot(df, aes(x = smoking, y = n, fill = lung_cancer)) +
+      geom_bar(stat = "identity", position = "fill") + theme_minimal() +
+      labs(title = "Proportion of Smokers by Lung Cancer Status", y = "Proportion")
+  )
+})
+```
+
+Model Summary
+=======================================================================
+
+### Model Summary Output
+```{r}
+renderPrint({ summary(model) })
+```
+
+### Odds Ratios
+```{r}
+renderTable({
+  exp(cbind(OddsRatio = coef(model), confint(model)))
+}, rownames = TRUE)
+```
+
+
+
